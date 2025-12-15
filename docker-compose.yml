@@ -1,0 +1,17 @@
+services:
+  inspector-backend:
+    build: .
+    container_name: inspector-backend
+    restart: unless-stopped
+    ports:
+      - '3012:3010' # Mapped to 3011 on host to avoid conflict with main backend
+    env_file:
+      - .env
+    volumes:
+      - ./uploads/inspection-photos:/usr/src/app/uploads/inspection-photos
+    networks:
+      - inspector-network
+
+networks:
+  inspector-network:
+    driver: bridge
