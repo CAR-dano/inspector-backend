@@ -24,9 +24,13 @@ export class FileValidationPipe implements PipeTransform {
     }
 
     private async validateFile(file: Express.Multer.File): Promise<void> {
-        if (!file || !file.path) throw new BadRequestException('Invalid file uploaded.');
+        // S3 uploads use 'location', local uploads use 'path'
+        const filePath = (file as any).location || file.path;
+
+        if (!file || !filePath) throw new BadRequestException('Invalid file uploaded.');
+
         if (file.size > MAX_FILE_SIZE_BYTES) {
-            await this.cleanupFile(file.path);
+            await this.cleanupFile(file.path); // Only cleanup local files
             throw new BadRequestException(`File "${file.originalname}" exceeds 5 MB.`);
         }
         if (!ALLOWED_MIME_TYPES.test(file.mimetype) || !ALLOWED_EXTENSIONS.test(extname(file.originalname))) {
@@ -34,19 +38,22 @@ export class FileValidationPipe implements PipeTransform {
             throw new BadRequestException(`File "${file.originalname}" has invalid type.`);
         }
 
-        try {
-            const { fileTypeFromBuffer } = await (eval('import("file-type")') as Promise<typeof import('file-type')>);
-            const buffer = await fs.readFile(file.path);
-            const type = await fileTypeFromBuffer(buffer);
-            if (!type || !ALLOWED_MIME_TYPES.test(type.mime)) {
+        // Only perform buffer check for local files
+        if (file.path) {
+            try {
+                const { fileTypeFromBuffer } = await (eval('import("file-type")') as Promise<typeof import('file-type')>);
+                const buffer = await fs.readFile(file.path);
+                const type = await fileTypeFromBuffer(buffer);
+                if (!type || !ALLOWED_MIME_TYPES.test(type.mime)) {
+                    await this.cleanupFile(file.path);
+                    throw new BadRequestException(`File content of "${file.originalname}" mismatch.`);
+                }
+            } catch (error) {
                 await this.cleanupFile(file.path);
-                throw new BadRequestException(`File content of "${file.originalname}" mismatch.`);
+                this.logger.error(`Validation failed for ${file.originalname}:`, error);
+                if (error instanceof BadRequestException) throw error;
+                throw new InternalServerErrorException('Could not validate file type.');
             }
-        } catch (error) {
-            await this.cleanupFile(file.path);
-            this.logger.error(`Validation failed for ${file.originalname}:`, error);
-            if (error instanceof BadRequestException) throw error;
-            throw new InternalServerErrorException('Could not validate file type.');
         }
     }
 

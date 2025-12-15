@@ -49,10 +49,13 @@ export class PhotosService {
             const file = files[i];
             const meta = metadataList[i] || {};
 
+            // Determine path: use S3 location if available (B2), fallback to filename (Local)
+            const filePath = (file as any).location || (file as any).key || file.filename;
+
             const photo = await this.prisma.photo.create({
                 data: {
                     inspectionId,
-                    path: file.filename, // Using filename as path relative to uploads/inspection-photos
+                    path: filePath,
                     label: meta.label || "Tambahan",
                     category: meta.category || "General",
                     isMandatory: meta.isMandatory || false,

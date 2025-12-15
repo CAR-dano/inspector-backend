@@ -2,8 +2,12 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
 import * as fs from 'fs';
+import * as dns from 'dns';
 
 async function bootstrap() {
+    // Force IPv4 usage to avoid ETIMEDOUT/ENETUNREACH on dual-stack networks (Backblaze B2)
+    dns.setDefaultResultOrder('ipv4first');
+
     const app = await NestFactory.create(AppModule);
     const logger = new Logger('Bootstrap');
 

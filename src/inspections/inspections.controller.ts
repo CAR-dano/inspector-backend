@@ -8,24 +8,11 @@ import { CreateInspectionDto } from './dto/create-inspection.dto';
 import { AddMultiplePhotosDto } from '../photos/dto/add-multiple-photos.dto';
 import { FileValidationPipe } from './pipes/file-validation.pipe';
 import { FilesInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 
 import { PhotoResponseDto } from '../photos/dto/photo-response.dto';
 
 const MAX_PHOTOS = 10;
-const UPLOAD_PATH = './uploads/inspection-photos';
-
-const photoStorageConfig = diskStorage({
-    destination: UPLOAD_PATH,
-    filename: (req, file, callback) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-        const extension = extname(file.originalname);
-        const safeOriginalName = file.originalname.split('.')[0].replace(/[^a-z0-9]/gi, '-').toLowerCase();
-        callback(null, `${safeOriginalName}-${uniqueSuffix}${extension}`);
-    },
-});
 
 @ApiTags('Inspections')
 @Controller('inspections')
@@ -49,11 +36,12 @@ export class InspectionsController {
         return this.inspectionsService.create(createInspectionDto, user.id);
     }
 
+
     @Post(':id/photos/multiple')
     @HttpCode(HttpStatus.CREATED)
     @UseGuards(JwtAuthGuard)
     @ApiBearerAuth()
-    @UseInterceptors(FilesInterceptor('photos', MAX_PHOTOS, { storage: photoStorageConfig }))
+    @UseInterceptors(FilesInterceptor('photos', MAX_PHOTOS))
     @ApiConsumes('multipart/form-data')
     @ApiBody({ type: AddMultiplePhotosDto })
     async addMultiplePhotos(
@@ -62,15 +50,26 @@ export class InspectionsController {
         @UploadedFiles(new FileValidationPipe()) files: Array<Express.Multer.File>,
     ) {
         const photos = await this.photosService.addMultiplePhotos(id, files, dto.metadata);
-        return photos.map(photo => new PhotoResponseDto({
-            ...photo,
-            label: photo.label ?? '',
-            category: photo.category ?? '',
-            isMandatory: photo.isMandatory ?? false,
-            needAttention: photo.needAttention ?? false,
-            // Map other potential nulls if necessary, or ensure DTO allows nulls.
-            // Since DTO defines them as required non-null types (by default in TS if not ?), we provide defaults.
-        }));
+
+        // Use APP_URL from env or default to localhost
+        const appUrl = process.env.APP_URL || 'http://localhost:3012';
+
+        return photos.map(photo => {
+            let fullPath = photo.path;
+            // Normalize path: if not http (S3), assume local and prepend base URL
+            if (photo.path && !photo.path.startsWith('http')) {
+                fullPath = `${appUrl}/uploads/inspection-photos/${photo.path}`;
+            }
+
+            return new PhotoResponseDto({
+                ...photo,
+                path: fullPath,
+                label: photo.label ?? '',
+                category: photo.category ?? '',
+                isMandatory: photo.isMandatory ?? false,
+                needAttention: photo.needAttention ?? false,
+            });
+        });
     }
 }
 
