@@ -10,12 +10,14 @@ export class UsersService {
     async findByEmail(email: string): Promise<User | null> {
         return this.prisma.user.findUnique({
             where: { email },
+            include: { inspectionBranchCity: true },
         });
     }
 
     async findById(id: string): Promise<User | null> {
         return this.prisma.user.findUnique({
             where: { id },
+            include: { inspectionBranchCity: true },
         });
     }
 

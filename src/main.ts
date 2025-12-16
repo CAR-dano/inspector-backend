@@ -3,6 +3,7 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
 import * as fs from 'fs';
 import * as dns from 'dns';
+import { ConfigService } from '@nestjs/config';
 
 async function bootstrap() {
     // Force IPv4 usage to avoid ETIMEDOUT/ENETUNREACH on dual-stack networks (Backblaze B2)
@@ -10,6 +11,7 @@ async function bootstrap() {
 
     const app = await NestFactory.create(AppModule);
     const logger = new Logger('Bootstrap');
+    const configService = app.get(ConfigService);
 
     // Ensure upload directories exist
     const uploadDirs = ['./uploads/inspection-photos'];
@@ -31,6 +33,22 @@ async function bootstrap() {
             },
         }),
     );
+
+    // Enable CORS if frontend and backend have different origins
+    const clientUrl = configService.get<string>('CLIENT_BASE_URL');
+    if (clientUrl) {
+        logger.log(`Enabling CORS for origin: ${clientUrl}`);
+        app.enableCors({
+            origin: clientUrl,
+            methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+            credentials: true,
+        });
+    } else {
+        logger.warn(
+            'CLIENT_BASE_URL not set in .env, enabling CORS for all origins (development only)',
+        );
+        app.enableCors();
+    }
 
     const port = process.env.PORT || 3001; // Default to 3001 to avoid conflict if backend runs on 3000
     await app.listen(port);

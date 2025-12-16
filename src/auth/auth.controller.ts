@@ -3,6 +3,8 @@ import { Controller, Post, Body, UseGuards, HttpCode, HttpStatus, Get, Req, Unau
 import { AuthService } from './auth.service';
 import { InspectorGuard } from './guards/inspector.guard';
 import { LoginInspectorDto } from './dto/login-inspector.dto';
+import { LoginResponseDto } from './dto/login-response.dto';
+import { UserResponseDto } from '../users/dto/user-response.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
 import { ApiTags, ApiOperation, ApiBody, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
@@ -18,8 +20,18 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Login for inspectors with PIN' })
     @ApiBody({ type: LoginInspectorDto })
-    async loginInspector(@Req() req: any) {
-        return this.authService.login(req.user);
+    @ApiResponse({
+        status: HttpStatus.OK,
+        description: 'Login successful, JWT returned.',
+        type: LoginResponseDto,
+    })
+    async loginInspector(@Req() req: any): Promise<LoginResponseDto> {
+        const { accessToken, refreshToken } = await this.authService.login(req.user);
+        return {
+            accessToken,
+            refreshToken,
+            user: new UserResponseDto(req.user),
+        };
     }
 
     @Post('refresh')

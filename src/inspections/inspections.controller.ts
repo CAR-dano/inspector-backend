@@ -8,9 +8,10 @@ import { CreateInspectionDto } from './dto/create-inspection.dto';
 import { AddMultiplePhotosDto } from '../photos/dto/add-multiple-photos.dto';
 import { FileValidationPipe } from './pipes/file-validation.pipe';
 import { FilesInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody, ApiResponse } from '@nestjs/swagger';
 
 import { PhotoResponseDto } from '../photos/dto/photo-response.dto';
+import { InspectionResponseDto } from './dto/inspection-response.dto';
 
 const MAX_PHOTOS = 10;
 
@@ -31,9 +32,11 @@ export class InspectionsController {
     // Although user plan said "Login -> Token", so this should be protected by JWT.
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Create inspection (Inspector only)' })
-    async create(@Body() createInspectionDto: CreateInspectionDto, @Req() req: any) {
+    @ApiResponse({ status: 201, description: 'Inspection created', type: InspectionResponseDto })
+    async create(@Body() createInspectionDto: CreateInspectionDto, @Req() req: any): Promise<InspectionResponseDto> {
         const user = req.user;
-        return this.inspectionsService.create(createInspectionDto, user.id);
+        const newInspection = await this.inspectionsService.create(createInspectionDto, user.id);
+        return new InspectionResponseDto(newInspection as any);
     }
 
 
@@ -66,8 +69,10 @@ export class InspectionsController {
                 path: fullPath,
                 label: photo.label ?? '',
                 category: photo.category ?? '',
+                originalLabel: photo.originalLabel, // Added originalLabel
                 isMandatory: photo.isMandatory ?? false,
                 needAttention: photo.needAttention ?? false,
+                createdAt: photo.createdAt
             });
         });
     }

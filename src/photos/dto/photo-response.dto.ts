@@ -22,6 +22,9 @@ export class PhotoResponseDto {
     needAttention: boolean;
 
     @ApiProperty()
+    originalLabel: string | null;
+
+    @ApiProperty()
     createdAt: Date;
 
     constructor(partial: Partial<PhotoResponseDto>) {
