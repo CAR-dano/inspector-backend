@@ -4,19 +4,103 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateInspectionDto } from './dto/create-inspection.dto';
 import { Prisma } from '@prisma/client';
 import { format } from 'date-fns';
+import { RedisService } from '../redis/redis.service';
 
 @Injectable()
 export class InspectionsService {
     private readonly logger = new Logger(InspectionsService.name);
+    private readonly SYNC_INTERVAL = 10; // Sync to DB every 10 sequences
 
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private prisma: PrismaService,
+        private redisService: RedisService,
+    ) { }
 
-    private async generateNextInspectionId(branchCode: string, inspectionDate: Date, tx: Prisma.TransactionClient): Promise<string> {
+    /**
+     * Generate next inspection ID using Redis atomic counter with DB fallback
+     */
+    private async generateNextInspectionId(
+        branchCode: string,
+        inspectionDate: Date,
+        tx?: Prisma.TransactionClient,
+    ): Promise<string> {
         const datePrefix = format(inspectionDate, 'ddMMyyyy');
         const idPrefix = `${branchCode.toUpperCase()}-${datePrefix}-`;
+        const cacheKey = `inspection:sequence:${branchCode.toUpperCase()}:${datePrefix}`;
 
-        const sequenceRecord = await tx.inspectionSequence.upsert({
-            where: { branchCode_datePrefix: { branchCode: branchCode.toUpperCase(), datePrefix } },
+        try {
+            // Try Redis atomic counter first
+            const redisHealthy = await this.redisService.isHealthy();
+
+            if (redisHealthy) {
+                this.logger.verbose('Using Redis for sequence generation');
+
+                // Get or initialize counter from DB
+                const currentCounter = await this.redisService.getCounter(cacheKey);
+
+                if (currentCounter === null) {
+                    // First time today - initialize from DB
+                    this.logger.verbose('Initializing Redis counter from DB');
+                    const dbRecord = await (tx || this.prisma).inspectionSequence.findUnique({
+                        where: {
+                            branchCode_datePrefix: {
+                                branchCode: branchCode.toUpperCase(),
+                                datePrefix,
+                            },
+                        },
+                    });
+
+                    const startSequence = dbRecord?.nextSequence || 0;
+                    await this.redisService.set(cacheKey, startSequence.toString(), 86400); // 24h TTL
+                }
+
+                // Atomic increment in Redis
+                const nextSequence = await this.redisService.increment(cacheKey, 86400);
+
+                if (nextSequence !== null) {
+                    // Periodic sync to DB (every 10 sequences)
+                    if (nextSequence % this.SYNC_INTERVAL === 0) {
+                        this.syncSequenceToDb(
+                            branchCode.toUpperCase(),
+                            datePrefix,
+                            nextSequence,
+                        ).catch((error) => {
+                            this.logger.warn(`Failed to sync sequence to DB: ${error.message}`);
+                        });
+                    }
+
+                    return `${idPrefix}${nextSequence.toString().padStart(3, '0')}`;
+                }
+            }
+        } catch (error) {
+            this.logger.warn(
+                `Redis sequence generation failed, falling back to DB: ${(error as Error).message}`,
+            );
+        }
+
+        // Fallback to DB-based sequence (original implementation)
+        this.logger.verbose('Using DB for sequence generation (Redis unavailable or failed)');
+        return this.generateNextInspectionIdFromDb(branchCode, datePrefix, tx);
+    }
+
+    /**
+     * Original DB-based sequence generation (fallback)
+     */
+    private async generateNextInspectionIdFromDb(
+        branchCode: string,
+        datePrefix: string,
+        tx?: Prisma.TransactionClient,
+    ): Promise<string> {
+        const idPrefix = `${branchCode.toUpperCase()}-${datePrefix}-`;
+        const prismaClient = tx || this.prisma;
+
+        const sequenceRecord = await prismaClient.inspectionSequence.upsert({
+            where: {
+                branchCode_datePrefix: {
+                    branchCode: branchCode.toUpperCase(),
+                    datePrefix,
+                },
+            },
             update: { nextSequence: { increment: 1 } },
             create: { branchCode: branchCode.toUpperCase(), datePrefix, nextSequence: 1 },
             select: { nextSequence: true },
@@ -24,6 +108,30 @@ export class InspectionsService {
 
         const currentSequence = sequenceRecord.nextSequence;
         return `${idPrefix}${currentSequence.toString().padStart(3, '0')}`;
+    }
+
+    /**
+     * Sync Redis counter to database (periodic backup)
+     */
+    private async syncSequenceToDb(
+        branchCode: string,
+        datePrefix: string,
+        sequence: number,
+    ): Promise<void> {
+        try {
+            await this.prisma.inspectionSequence.upsert({
+                where: {
+                    branchCode_datePrefix: { branchCode, datePrefix },
+                },
+                update: { nextSequence: sequence },
+                create: { branchCode, datePrefix, nextSequence: sequence },
+            });
+            this.logger.verbose(`Synced sequence ${sequence} to DB for ${branchCode}-${datePrefix}`);
+        } catch (error) {
+            this.logger.error(
+                `Failed to sync sequence to DB: ${(error as Error).message}`,
+            );
+        }
     }
 
     async create(createInspectionDto: CreateInspectionDto, inspectorId: string): Promise<{ id: string }> {

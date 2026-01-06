@@ -177,6 +177,54 @@ export class RedisService implements OnModuleDestroy {
     }
 
     /**
+     * Atomically increment a counter in Redis
+     * @param key Counter key
+     * @param ttlSeconds Optional TTL to set if key is new
+     * @returns The incremented value, or null if Redis unavailable
+     */
+    async increment(key: string, ttlSeconds?: number): Promise<number | null> {
+        try {
+            if (!this.isConnected) {
+                this.logger.verbose('Redis not connected, skipping increment operation');
+                return null;
+            }
+
+            const result = await this.client.incr(key);
+
+            // Set TTL if provided and this is a new key (result === 1)
+            if (ttlSeconds && result === 1) {
+                await this.client.expire(key, ttlSeconds);
+            }
+
+            return result;
+        } catch (error) {
+            this.logger.warn(
+                `Redis INCR failed for key "${key}": ${(error as Error).message}`,
+            );
+            return null; // Graceful degradation
+        }
+    }
+
+    /**
+     * Get current value of a counter without incrementing
+     * Returns the counter value as a number, or null if key doesn't exist
+     */
+    async getCounter(key: string): Promise<number | null> {
+        try {
+            const value = await this.get(key);
+            if (value === null) return null;
+
+            const parsed = parseInt(value, 10);
+            return isNaN(parsed) ? null : parsed;
+        } catch (error) {
+            this.logger.warn(
+                `Redis GET counter failed for key "${key}": ${(error as Error).message}`,
+            );
+            return null;
+        }
+    }
+
+    /**
      * Gracefully disconnect from Redis on module destroy
      */
     async onModuleDestroy() {
