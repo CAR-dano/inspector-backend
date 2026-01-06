@@ -9,6 +9,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
 import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
+import { RedisModule } from '../redis/redis.module';
 
 @Module({
     imports: [
@@ -25,6 +26,7 @@ import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
             } as any),
             inject: [ConfigService],
         }),
+        RedisModule,
     ],
     controllers: [AuthController],
     providers: [AuthService, JwtStrategy, JwtRefreshStrategy],
