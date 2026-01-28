@@ -25,8 +25,8 @@ export class RedisThrottlerStorage implements ThrottlerStorage {
 
         // Lua script to atomically increment and ensure TTL is set
         const script = `
-      var hits = redis.call('INCR', KEYS[1])
-      var ttl = redis.call('PTTL', KEYS[1])
+      local hits = redis.call('INCR', KEYS[1])
+      local ttl = redis.call('PTTL', KEYS[1])
       
       -- If key was just created or has no TTL, set it
       if ttl == -1 then
