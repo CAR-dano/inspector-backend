@@ -173,11 +173,11 @@ export class InspectionsService {
                     namaCustomer: identityDetails.namaCustomer,
                     cabangInspeksi: branchCity.city,
                 },
-                vehicleData: createInspectionDto.vehicleData ?? Prisma.JsonNull,
-                equipmentChecklist: createInspectionDto.equipmentChecklist ?? Prisma.JsonNull,
-                inspectionSummary: createInspectionDto.inspectionSummary ?? Prisma.JsonNull,
-                detailedAssessment: createInspectionDto.detailedAssessment ?? Prisma.JsonNull,
-                bodyPaintThickness: createInspectionDto.bodyPaintThickness ?? Prisma.JsonNull,
+                vehicleData: (createInspectionDto.vehicleData as any) ?? Prisma.JsonNull,
+                equipmentChecklist: (createInspectionDto.equipmentChecklist as any) ?? Prisma.JsonNull,
+                inspectionSummary: (createInspectionDto.inspectionSummary as any) ?? Prisma.JsonNull,
+                detailedAssessment: (createInspectionDto.detailedAssessment as any) ?? Prisma.JsonNull,
+                bodyPaintThickness: (createInspectionDto.bodyPaintThickness as any) ?? Prisma.JsonNull,
                 notesFontSizes: createInspectionDto.notesFontSizes ?? {},
             };
 
