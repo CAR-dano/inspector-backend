@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import * as fs from 'fs';
 import * as dns from 'dns';
@@ -9,7 +10,12 @@ async function bootstrap() {
     // Force IPv4 usage to avoid ETIMEDOUT/ENETUNREACH on dual-stack networks (Backblaze B2)
     dns.setDefaultResultOrder('ipv4first');
 
-    const app = await NestFactory.create(AppModule);
+    const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+    // Enable Trust Proxy for correct IP resolution behind Load Balancers (Nginx, Cloudflare, etc.)
+    // This ensures Rate Limiting works effectively per user IP
+    app.set('trust proxy', 1);
+
     const logger = new Logger('Bootstrap');
     const configService = app.get(ConfigService);
 

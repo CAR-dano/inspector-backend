@@ -9,6 +9,11 @@ import { InspectionsModule } from './inspections/inspections.module';
 import { InspectionBranchesModule } from './inspection-branches/inspection-branches.module';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { RedisModule } from './redis/redis.module';
+import { RedisService } from './redis/redis.service';
+import { RedisThrottlerStorage } from './common/throttler/redis-throttler.storage';
 
 @Module({
     imports: [
@@ -17,6 +22,21 @@ import { join } from 'path';
             serveRoot: '/uploads', // Access via http://host/uploads/...
         }),
         ConfigModule.forRoot({ isGlobal: true }),
+        RedisModule, // Import explicitly for Throttler dependency
+
+        ThrottlerModule.forRootAsync({
+            imports: [RedisModule],
+            inject: [RedisService],
+            useFactory: (redisService: RedisService) => ({
+                throttlers: [
+                    {
+                        ttl: 60000, // 1 minute
+                        limit: 60,  // 60 requests
+                    },
+                ],
+                storage: new RedisThrottlerStorage(redisService),
+            }),
+        }),
 
         PrismaModule,
         AuthModule,
@@ -24,6 +44,12 @@ import { join } from 'path';
         PhotosModule,
         InspectionsModule,
         InspectionBranchesModule,
+    ],
+    providers: [
+        {
+            provide: APP_GUARD,
+            useClass: ThrottlerGuard,
+        },
     ],
 })
 export class AppModule { }
