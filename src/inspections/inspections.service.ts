@@ -182,7 +182,7 @@ export class InspectionsService {
             const newInspection = await tx.inspection.create({ data: dataToCreate });
             return { id: newInspection.id };
         }, {
-            isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+            isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
             maxWait: 5000,
             timeout: 10000,
         });
