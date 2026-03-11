@@ -41,18 +41,19 @@ export class PhotosService {
             this.logger.warn(`Mismatch metadata count (${metadataList.length}) vs files (${files.length}). Proceeding but might be inconsistent.`);
         }
 
-        const createdPhotos: Photo[] = [];
+
 
         // Use transaction if needed, but for files loop it's okay to do promise.all or sequential
         // Sequential to ensure ordering matching
-        for (let i = 0; i < files.length; i++) {
-            const file = files[i];
+        // Parallelize database inserts using Promise.all
+        // This significantly improves performance for batched uploads (e.g., 10 photos/request)
+        const photoPromises = files.map(async (file, i) => {
             const meta = metadataList[i] || {};
 
             // Determine path: use S3 location if available (B2), fallback to filename (Local)
             const filePath = (file as any).location || (file as any).key || file.filename;
 
-            const photo = await this.prisma.photo.create({
+            return this.prisma.photo.create({
                 data: {
                     inspectionId,
                     path: filePath,
@@ -64,8 +65,9 @@ export class PhotosService {
                     displayInPdf: meta.displayInPdf !== undefined ? meta.displayInPdf : true
                 }
             });
-            createdPhotos.push(photo);
-        }
+        });
+
+        const createdPhotos = await Promise.all(photoPromises);
 
         return createdPhotos;
     }

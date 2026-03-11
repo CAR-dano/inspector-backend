@@ -52,4 +52,26 @@ export class AuthController {
     checkTokenValidity() {
         return { message: 'Token is valid' };
     }
+
+    @Post('logout')
+    @UseGuards(JwtAuthGuard)
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Logout and invalidate token' })
+    @ApiBearerAuth()
+    async logout(@Req() req: any) {
+        // Extract token directly from header since req.user is just the payload
+        // JwtStrategy already validated the signature and expiration
+        const authHeader = req.headers.authorization;
+        if (!authHeader) return; // Should be caught by Guard, but safety check
+
+        const token = authHeader.split(' ')[1];
+
+        // Use expiration from the validated payload
+        // payload.exp is in seconds, convert to Milliseconds
+        const expiresAt = new Date(req.user['exp'] * 1000);
+
+        await this.authService.blacklistToken(token, expiresAt);
+
+        return { message: 'Logged out successfully' };
+    }
 }

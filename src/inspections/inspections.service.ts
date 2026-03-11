@@ -5,6 +5,8 @@ import { CreateInspectionDto } from './dto/create-inspection.dto';
 import { Prisma } from '@prisma/client';
 import { format } from 'date-fns';
 import { RedisService } from '../redis/redis.service';
+import { UsersService } from '../users/users.service';
+import { InspectionBranchesService } from '../inspection-branches/inspection-branches.service';
 
 @Injectable()
 export class InspectionsService {
@@ -14,6 +16,8 @@ export class InspectionsService {
     constructor(
         private prisma: PrismaService,
         private redisService: RedisService,
+        private usersService: UsersService,
+        private inspectionBranchesService: InspectionBranchesService,
     ) { }
 
     /**
@@ -141,19 +145,13 @@ export class InspectionsService {
         if (!effectiveInspectorId) throw new BadRequestException('Inspector ID is missing.');
 
         // Fetch Inspector and Branch
-        const inspector = await this.prisma.user.findUnique({
-            where: { id: effectiveInspectorId },
-            select: { name: true, inspectionBranchCityId: true },
-        });
+        const inspector = await this.usersService.findById(effectiveInspectorId);
         if (!inspector) throw new BadRequestException(`Inspector ${effectiveInspectorId} not found.`);
 
         let effectiveBranchCityUuid = inspector.inspectionBranchCityId || identityDetails.cabangInspeksi;
         if (!effectiveBranchCityUuid) throw new BadRequestException('Branch City ID is missing.');
 
-        const branchCity = await this.prisma.inspectionBranchCity.findUnique({
-            where: { id: effectiveBranchCityUuid },
-            select: { city: true, code: true },
-        });
+        const branchCity = await this.inspectionBranchesService.findOne(effectiveBranchCityUuid);
         if (!branchCity) throw new BadRequestException(`Branch ${effectiveBranchCityUuid} not found.`);
 
         const inspectionDateObj = new Date(createInspectionDto.inspectionDate);
@@ -173,18 +171,18 @@ export class InspectionsService {
                     namaCustomer: identityDetails.namaCustomer,
                     cabangInspeksi: branchCity.city,
                 },
-                vehicleData: createInspectionDto.vehicleData ?? Prisma.JsonNull,
-                equipmentChecklist: createInspectionDto.equipmentChecklist ?? Prisma.JsonNull,
-                inspectionSummary: createInspectionDto.inspectionSummary ?? Prisma.JsonNull,
-                detailedAssessment: createInspectionDto.detailedAssessment ?? Prisma.JsonNull,
-                bodyPaintThickness: createInspectionDto.bodyPaintThickness ?? Prisma.JsonNull,
+                vehicleData: (createInspectionDto.vehicleData as any) ?? Prisma.JsonNull,
+                equipmentChecklist: (createInspectionDto.equipmentChecklist as any) ?? Prisma.JsonNull,
+                inspectionSummary: (createInspectionDto.inspectionSummary as any) ?? Prisma.JsonNull,
+                detailedAssessment: (createInspectionDto.detailedAssessment as any) ?? Prisma.JsonNull,
+                bodyPaintThickness: (createInspectionDto.bodyPaintThickness as any) ?? Prisma.JsonNull,
                 notesFontSizes: createInspectionDto.notesFontSizes ?? {},
             };
 
             const newInspection = await tx.inspection.create({ data: dataToCreate });
             return { id: newInspection.id };
         }, {
-            isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+            isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
             maxWait: 5000,
             timeout: 10000,
         });
